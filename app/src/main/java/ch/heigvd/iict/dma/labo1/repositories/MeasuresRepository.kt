@@ -5,9 +5,16 @@ import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.Transformations
 import ch.heigvd.iict.dma.labo1.models.*
+import com.google.gson.Gson
+import com.google.gson.GsonBuilder
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import java.io.BufferedReader
+import java.io.InputStreamReader
+import java.net.HttpURLConnection
+import java.net.URL
+import java.util.*
 import kotlin.system.measureTimeMillis
 
 class MeasuresRepository(private val scope : CoroutineScope,
@@ -44,18 +51,62 @@ class MeasuresRepository(private val scope : CoroutineScope,
     }
 
     fun sendMeasureToServer(encryption : Encryption, compression : Compression, networkType : NetworkType, serialisation : Serialisation) {
-        scope.launch(Dispatchers.Default) {
+        scope.launch(Dispatchers.IO) {
 
-            val url = when (encryption) {
+            val urlStr = when (encryption) {
                 Encryption.DISABLED -> httpUrl
                 Encryption.SSL -> httpsUrl
             }
 
+            val url = URL(urlStr)
+            val conn = url.openConnection() as HttpURLConnection
+
+            conn.requestMethod = "POST"
+            conn.setRequestProperty("Content-Type", "application/json")
+            if (networkType != NetworkType.RANDOM)
+                conn.setRequestProperty("X-Network", networkType.toString())
+
+            if (compression == Compression.DEFLATE)
+                conn.setRequestProperty("X-Content-Encoding", "DEFLATE")
+
+
+
             val elapsed = measureTimeMillis {
                 Log.e("SendViewModel", "Implement me !!! Send measures to $url") //TODO
+
+                val json = toJson(measures.value!!)
+
+                Log.d("SendViewModel", "JSON: $json")
+
+                conn.outputStream.use { output ->
+                    output.write(json.toByteArray(Charsets.UTF_8))
+                }
+
+                Log.d("Response", conn.responseCode.toString()) //TODO gérer les erreurs
+
+                var data = "";
+                BufferedReader(InputStreamReader(conn.inputStream)).use { br ->
+                    data = br.readText()
+                    Log.d("Response", data)
+                }
             }
             _requestDuration.postValue(elapsed)
         }
+    }
+
+
+    private fun toJson(measures: List<Measure>) : String {
+        val gson = GsonBuilder()
+            .registerTypeHierarchyAdapter(Calendar::class.java, CalendarTypeAdapter())
+            .create()
+        return gson.toJson(measures)
+    }
+
+    private fun fromJson(json: String) : List<Measure> {
+        val gson = GsonBuilder()
+            .registerTypeHierarchyAdapter(Calendar::class.java, CalendarTypeAdapter())
+            .create()
+        return gson.fromJson(json, Array<Measure>::class.java).toList()
     }
 
 }
