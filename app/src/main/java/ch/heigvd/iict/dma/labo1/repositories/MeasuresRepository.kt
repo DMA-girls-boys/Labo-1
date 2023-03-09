@@ -94,16 +94,10 @@ class MeasuresRepository(private val scope : CoroutineScope,
                 Log.d("Response", responseList.toString())
 
                 // iterate on measures
-                for (measure in measures.value!!) {
-                    // iterate on response
-                    for (response in responseList) {
-                        // if measure id is equal to response id
-                        if (measure.id == response.id) {
-                            // update measure
-                            measure.status = response.status
-                        }
+                measures.value?.forEach { measure ->
+                    responseList[measure.id]?.let { response ->
+                        measure.status = response.status
                     }
-
                 }
             }
             _requestDuration.postValue(elapsed)
@@ -118,9 +112,9 @@ class MeasuresRepository(private val scope : CoroutineScope,
         return gson.toJson(measures)
     }
 
-    private fun fromJson(json: String) : List<ResponseMessage> {
+    private fun fromJson(json: String) : kotlin.collections.Map<Int, ResponseMessage> {
         val gson = Gson()
-        return gson.fromJson(json, Array<ResponseMessage>::class.java).toList()
+        return gson.fromJson(json, Array<ResponseMessage>::class.java).associateBy { it.id }
     }
 
 }
