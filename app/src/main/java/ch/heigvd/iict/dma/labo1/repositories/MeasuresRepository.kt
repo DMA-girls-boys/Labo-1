@@ -89,6 +89,22 @@ class MeasuresRepository(private val scope : CoroutineScope,
                     data = br.readText()
                     Log.d("Response", data)
                 }
+
+                val responseList = fromJson(data)
+                Log.d("Response", responseList.toString())
+
+                // iterate on measures
+                for (measure in measures.value!!) {
+                    // iterate on response
+                    for (response in responseList) {
+                        // if measure id is equal to response id
+                        if (measure.id == response.id) {
+                            // update measure
+                            measure.status = response.status
+                        }
+                    }
+
+                }
             }
             _requestDuration.postValue(elapsed)
         }
@@ -102,11 +118,9 @@ class MeasuresRepository(private val scope : CoroutineScope,
         return gson.toJson(measures)
     }
 
-    private fun fromJson(json: String) : List<Measure> {
-        val gson = GsonBuilder()
-            .registerTypeHierarchyAdapter(Calendar::class.java, CalendarTypeAdapter())
-            .create()
-        return gson.fromJson(json, Array<Measure>::class.java).toList()
+    private fun fromJson(json: String) : List<ResponseMessage> {
+        val gson = Gson()
+        return gson.fromJson(json, Array<ResponseMessage>::class.java).toList()
     }
 
 }
