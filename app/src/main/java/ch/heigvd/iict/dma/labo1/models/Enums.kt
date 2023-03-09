@@ -5,7 +5,20 @@ enum class Serialisation {
 }
 
 enum class NetworkType {
-    RANDOM, CSD, GPRS, EDGE, UMTS, HSPA, LTE, NR5G
+    RANDOM, CSD, GPRS, EDGE, UMTS, HSPA, LTE, NR5G;
+
+    override fun toString(): String {
+        return when (this) {
+            RANDOM -> "Random"
+            CSD -> "CSD"
+            GPRS -> "GPRS"
+            EDGE -> "EDGE"
+            UMTS -> "UMTS"
+            HSPA -> "HSPA"
+            LTE -> "LTE"
+            NR5G -> "NR5G"
+        }
+    }
 }
 
 enum class Compression {
