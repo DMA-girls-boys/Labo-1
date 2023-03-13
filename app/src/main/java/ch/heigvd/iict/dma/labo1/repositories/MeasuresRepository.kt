@@ -89,6 +89,16 @@ class MeasuresRepository(private val scope : CoroutineScope,
                     data = br.readText()
                     Log.d("Response", data)
                 }
+
+                val responseList = fromJson(data)
+                Log.d("Response", responseList.toString())
+
+                // iterate on measures
+                measures.value?.forEach { measure ->
+                    responseList[measure.id]?.let { response ->
+                        measure.status = response.status
+                    }
+                }
             }
             _requestDuration.postValue(elapsed)
         }
@@ -102,11 +112,9 @@ class MeasuresRepository(private val scope : CoroutineScope,
         return gson.toJson(measures)
     }
 
-    private fun fromJson(json: String) : List<Measure> {
-        val gson = GsonBuilder()
-            .registerTypeHierarchyAdapter(Calendar::class.java, CalendarTypeAdapter())
-            .create()
-        return gson.fromJson(json, Array<Measure>::class.java).toList()
+    private fun fromJson(json: String) : kotlin.collections.Map<Int, ResponseMessage> {
+        val gson = Gson()
+        return gson.fromJson(json, Array<ResponseMessage>::class.java).associateBy { it.id }
     }
 
 }
