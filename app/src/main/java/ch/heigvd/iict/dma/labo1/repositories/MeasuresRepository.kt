@@ -10,6 +10,7 @@ import com.google.gson.GsonBuilder
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import org.jdom2.DocType
 import java.io.BufferedReader
 import java.io.InputStreamReader
 import java.net.HttpURLConnection
@@ -74,15 +75,23 @@ class MeasuresRepository(private val scope : CoroutineScope,
             val elapsed = measureTimeMillis {
                 Log.e("SendViewModel", "Implement me !!! Send measures to $url") //TODO
 
-                val json = toJson(measures.value!!)
+                if (serialisation == Serialisation.XML) {
+                    val xml = toXML(measures.value!!)
+                    Log.d("SendViewModel", "XML: $xml")
+                    conn.outputStream.use { output ->
+                        output.write(xml?.toByteArray(Charsets.UTF_8))
+                    }
+                } else {
+                    val json = toJson(measures.value!!)
 
-                Log.d("SendViewModel", "JSON: $json")
+                    Log.d("SendViewModel", "JSON: $json")
 
-                conn.outputStream.use { output ->
-                    output.write(json.toByteArray(Charsets.UTF_8))
+                    conn.outputStream.use { output ->
+                        output.write(json.toByteArray(Charsets.UTF_8))
+                    }
+                    Log.d("Response", conn.responseCode.toString()) //TODO gérer les erreurs
                 }
 
-                Log.d("Response", conn.responseCode.toString()) //TODO gérer les erreurs
 
                 var data = "";
                 BufferedReader(InputStreamReader(conn.inputStream)).use { br ->
@@ -112,9 +121,30 @@ class MeasuresRepository(private val scope : CoroutineScope,
         return gson.toJson(measures)
     }
 
-    private fun fromJson(json: String) : kotlin.collections.Map<Int, ResponseMessage> {
+    private fun fromJson(json: String) : Map<Int, ResponseMessage> {
         val gson = Gson()
         return gson.fromJson(json, Array<ResponseMessage>::class.java).associateBy { it.id }
+    }
+
+    private fun toXML(measures: List<Measure>) : String {
+        val docType = DocType("measures", dtd)
+        try {
+            val root = org.jdom2.Element("measures")
+            val document = org.jdom2.Document(root, docType)
+            measures.forEach { measure ->
+                val measureElement = org.jdom2.Element("measure")
+                measureElement.setAttribute("id", measure.id.toString())
+                measureElement.setAttribute("status", measure.status.toString())
+                measureElement.setAttribute("type", measure.type.toString())
+                measureElement.setAttribute("value", measure.value.toString())
+                measureElement.setAttribute("date", CalendarTypeAdapter.toString(measure.date))
+            }
+            return org.jdom2.output.XMLOutputter().outputString(document)
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+
+        return ""
     }
 
 }
