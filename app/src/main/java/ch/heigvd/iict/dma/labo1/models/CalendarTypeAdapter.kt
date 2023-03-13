@@ -8,8 +8,7 @@ import java.util.*
 
 class CalendarTypeAdapter : TypeAdapter<Calendar?>() {
     override fun write(out: JsonWriter?, value: Calendar?) {
-        val dateFormat = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSZ")
-        out?.value(dateFormat.format(value?.time))
+        out?.value(toString(value!!))
     }
 
     override fun read(i: JsonReader?): Calendar {
@@ -18,5 +17,12 @@ class CalendarTypeAdapter : TypeAdapter<Calendar?>() {
         val calendar = Calendar.getInstance()
         calendar.time = date
         return calendar
+    }
+
+    companion object {
+        fun toString(calendar: Calendar): String {
+            val dateFormat = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSZ")
+            return dateFormat.format(calendar.time)
+        }
     }
 }
