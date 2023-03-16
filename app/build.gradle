@@ -64,4 +64,9 @@ dependencies {
     ksp 'androidx.room:room-compiler:2.5.0'
     androidTestImplementation 'androidx.room:room-testing:2.5.0'
 
+    implementation 'com.google.code.gson:gson:2.10.1'
+
+    // https://mvnrepository.com/artifact/org.jdom/jdom2
+    implementation("org.jdom:jdom2:2.0.6")
+
 }
