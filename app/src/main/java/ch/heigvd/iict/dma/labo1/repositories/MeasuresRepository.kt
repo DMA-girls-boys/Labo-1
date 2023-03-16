@@ -11,8 +11,10 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import org.jdom2.DocType
+import org.xml.sax.InputSource
 import java.io.BufferedReader
 import java.io.InputStreamReader
+import java.io.StringReader
 import java.net.HttpURLConnection
 import java.net.URL
 import java.util.*
@@ -63,7 +65,7 @@ class MeasuresRepository(private val scope : CoroutineScope,
             val conn = url.openConnection() as HttpURLConnection
 
             conn.requestMethod = "POST"
-            conn.setRequestProperty("Content-Type", "application/json")
+
             if (networkType != NetworkType.RANDOM)
                 conn.setRequestProperty("X-Network", networkType.toString())
 
@@ -76,12 +78,14 @@ class MeasuresRepository(private val scope : CoroutineScope,
                 Log.e("SendViewModel", "Implement me !!! Send measures to $url") //TODO
 
                 if (serialisation == Serialisation.XML) {
+                    conn.setRequestProperty("Content-Type", "application/xml")
                     val xml = toXML(measures.value!!)
                     Log.d("SendViewModel", "XML: $xml")
                     conn.outputStream.use { output ->
-                        output.write(xml?.toByteArray(Charsets.UTF_8))
+                        output.write(xml.toByteArray(Charsets.UTF_8))
                     }
                 } else {
+                    conn.setRequestProperty("Content-Type", "application/json")
                     val json = toJson(measures.value!!)
 
                     Log.d("SendViewModel", "JSON: $json")
@@ -89,23 +93,30 @@ class MeasuresRepository(private val scope : CoroutineScope,
                     conn.outputStream.use { output ->
                         output.write(json.toByteArray(Charsets.UTF_8))
                     }
-                    Log.d("Response", conn.responseCode.toString()) //TODO gérer les erreurs
                 }
 
-
+                if (conn.responseCode != 200) {
+                    throw Exception("Error while sending measures to server")
+                }
                 var data = "";
                 BufferedReader(InputStreamReader(conn.inputStream)).use { br ->
                     data = br.readText()
                     Log.d("Response", data)
                 }
 
-                val responseList = fromJson(data)
-                Log.d("Response", responseList.toString())
-
-                // iterate on measures
-                measures.value?.forEach { measure ->
-                    responseList[measure.id]?.let { response ->
-                        measure.status = response.status
+                if (serialisation == Serialisation.XML) {
+                    val responseList = fromXML(InputSource(StringReader(data)))
+                    measures.value?.forEach { measure ->
+                        responseList[measure.id]?.let { response ->
+                            measure.status = response.status
+                        }
+                    }
+                } else {
+                    val responseList = fromJson(data)
+                    measures.value?.forEach { measure ->
+                        responseList[measure.id]?.let { response ->
+                            measure.status = response.status
+                        }
                     }
                 }
             }
@@ -131,14 +142,15 @@ class MeasuresRepository(private val scope : CoroutineScope,
         try {
             val root = org.jdom2.Element("measures")
             val document = org.jdom2.Document(root, docType)
-            measures.forEach { measure ->
+            document.rootElement.addContent(measures.map { measure ->
                 val measureElement = org.jdom2.Element("measure")
                 measureElement.setAttribute("id", measure.id.toString())
                 measureElement.setAttribute("status", measure.status.toString())
-                measureElement.setAttribute("type", measure.type.toString())
-                measureElement.setAttribute("value", measure.value.toString())
-                measureElement.setAttribute("date", CalendarTypeAdapter.toString(measure.date))
-            }
+                measureElement.addContent(org.jdom2.Element("type").setText(measure.type.toString()))
+                measureElement.addContent(org.jdom2.Element("value").setText(measure.value.toString()))
+                measureElement.addContent(org.jdom2.Element("date").setText(measure.date.toString()))
+                measureElement
+            })
             return org.jdom2.output.XMLOutputter().outputString(document)
         } catch (e: Exception) {
             e.printStackTrace()
@@ -146,5 +158,25 @@ class MeasuresRepository(private val scope : CoroutineScope,
 
         return ""
     }
-
+    private fun fromXML(xml: InputSource) : Map<Int, ResponseMessage> {
+        val messages = mutableMapOf<Int, ResponseMessage>()
+        try {
+            val builder = org.jdom2.input.SAXBuilder()
+            builder.setFeature("http://xml.org/sax/features/external-general-entities", false)
+            val document = builder.build(xml)
+            document.rootElement.children.forEach { responseElement ->
+                val id = responseElement.getAttributeValue("id").toInt()
+                val status = when (responseElement.getAttributeValue("status")) {
+                    "OK" -> Measure.Status.OK
+                    "ERROR" -> Measure.Status.ERROR
+                    "NEW" -> Measure.Status.NEW
+                    else -> throw Exception("Unknown status")
+                }
+                messages[id] = ResponseMessage(id, status)
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+        return messages
+    }
 }
