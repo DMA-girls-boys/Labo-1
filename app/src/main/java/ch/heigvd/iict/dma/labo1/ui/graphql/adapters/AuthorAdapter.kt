@@ -8,8 +8,8 @@ import android.widget.BaseAdapter
 import android.widget.TextView
 import ch.heigvd.iict.dma.labo1.models.Author
 
-class AuthorAdapter(private val context : Context) : BaseAdapter() {
-    var authors : List<Author> = emptyList()
+class AuthorAdapter(private val context: Context) : BaseAdapter() {
+    var authors: List<Author> = emptyList()
         set(value) {
             field = value
             notifyDataSetChanged()
@@ -25,8 +25,9 @@ class AuthorAdapter(private val context : Context) : BaseAdapter() {
 
     override fun getView(position: Int, convertView: View?, parent: ViewGroup?): View {
         var view = convertView
-        if(view == null) {
-            view = LayoutInflater.from(context).inflate(android.R.layout.simple_list_item_1, parent, false)
+        if (view == null) {
+            view = LayoutInflater.from(context)
+                .inflate(android.R.layout.simple_list_item_1, parent, false)
         }
 
         val item = getItem(position)
