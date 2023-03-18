@@ -3,6 +3,7 @@ package ch.heigvd.iict.dma.labo1.ui.push
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import ch.heigvd.iict.dma.labo1.database.MessagesDao
+import ch.heigvd.iict.dma.labo1.models.Message
 import ch.heigvd.iict.dma.labo1.repositories.MessagesRepository
 
 class PushViewModel(messageDao : MessagesDao) : ViewModel() {
