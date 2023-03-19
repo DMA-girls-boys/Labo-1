@@ -14,14 +14,14 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import org.jdom2.DocType
 import org.xml.sax.InputSource
-import java.io.BufferedReader
-import java.io.ByteArrayOutputStream
-import java.io.InputStreamReader
-import java.io.StringReader
+import java.io.*
 import java.net.HttpURLConnection
 import java.net.URL
 import java.util.*
+import java.util.zip.Deflater
 import java.util.zip.DeflaterOutputStream
+import java.util.zip.Inflater
+import java.util.zip.InflaterInputStream
 import kotlin.system.measureTimeMillis
 
 class MeasuresRepository(private val scope : CoroutineScope,
@@ -83,7 +83,9 @@ class MeasuresRepository(private val scope : CoroutineScope,
                     }
                     Serialisation.JSON -> {
                         conn.setRequestProperty("Content-Type", "application/json")
-                        toSend = toJson(measures.value!!).toByteArray(Charsets.UTF_8)
+                        val serialized = toJson(measures.value!!)
+                        Log.d("JSON", serialized)
+                        toSend = serialized.toByteArray(Charsets.UTF_8)
                     }
                     Serialisation.PROTOBUF -> {
                         conn.setRequestProperty("Content-Type", "application/protobuf")
@@ -93,14 +95,20 @@ class MeasuresRepository(private val scope : CoroutineScope,
 
                 // Compression if needed
                 if (compression == Compression.DEFLATE) {
-                    conn.setRequestProperty("X-Content-Encoding", "DEFLATE")
+                    Log.d("Compression", "Deflate")
+                    conn.setRequestProperty("X-Content-Encoding", "deflate")
                     var arrayOutputStream = ByteArrayOutputStream()
-                    var outputStream = DeflaterOutputStream(arrayOutputStream)
+                    var outputStream = DeflaterOutputStream(arrayOutputStream, Deflater(8, true))
                     outputStream.write(toSend)
                     outputStream.flush()
                     outputStream.close()
                     toSend = arrayOutputStream.toByteArray()
+
+                    val inflaterInputStream = InflaterInputStream(ByteArrayInputStream(toSend), Inflater(true))
+                    Log.d("Inflated", inflaterInputStream.bufferedReader().use { it.readText() })
                 }
+
+
 
                 conn.outputStream.use { output ->
                     output.write(toSend)
@@ -110,15 +118,29 @@ class MeasuresRepository(private val scope : CoroutineScope,
                     throw Exception("Error while sending measures to server, Error:" + conn.responseCode + " | " + conn.headerFields.get("X-Error"))
                 }
 
+                var dataString : String
+                val baos = ByteArrayOutputStream()
+                if (serialisation == Serialisation.PROTOBUF) {
+                    val byteChunk = ByteArray(4096)
+                    var n: Int
+                    while (conn.inputStream.read(byteChunk).also { n = it } > 0) {
+                        baos.write(byteChunk, 0, n)
+                    }
+                    dataString = baos.toString()
+                } else {
+                    BufferedReader(InputStreamReader(conn.inputStream)).use { br ->
+                        dataString = br.readText()
+                        Log.d("Response", dataString)
+                    }
+                }
+
+                if (compression == Compression.DEFLATE) {
+                    val inflaterInputStream = InflaterInputStream(ByteArrayInputStream(dataString.toByteArray(Charsets.UTF_8)), Inflater(true))
+                    dataString = inflaterInputStream.bufferedReader().use { it.readText() }
+                }
 
                 when (serialisation) {
                     Serialisation.XML -> {
-                        var dataString = "";
-                        BufferedReader(InputStreamReader(conn.inputStream)).use { br ->
-                            dataString = br.readText()
-                            Log.d("Response", dataString)
-                        }
-
                         val responseList = fromXML(InputSource(StringReader(dataString)))
                         measures.value?.forEach { measure ->
                             responseList[measure.id]?.let { response ->
@@ -127,12 +149,6 @@ class MeasuresRepository(private val scope : CoroutineScope,
                         }
                     }
                     Serialisation.JSON -> {
-                        var dataString = "";
-                        BufferedReader(InputStreamReader(conn.inputStream)).use { br ->
-                            dataString = br.readText()
-                            Log.d("Response", dataString)
-                        }
-
                         val responseList = fromJson(dataString)
                         measures.value?.forEach { measure ->
                             responseList[measure.id]?.let { response ->
@@ -141,12 +157,7 @@ class MeasuresRepository(private val scope : CoroutineScope,
                         }
                     }
                     Serialisation.PROTOBUF -> {
-                        val baos = ByteArrayOutputStream()
-                        val byteChunk = ByteArray(4096)
-                        var n: Int
-                        while (conn.inputStream.read(byteChunk).also { n = it } > 0) {
-                            baos.write(byteChunk, 0, n)
-                        }
+
                         val responseList = MeasuresOuterClass.MeasuresAck.parseFrom(baos.toByteArray())
                         measures.value?.forEach { measure ->
                             val id = measure.id;
