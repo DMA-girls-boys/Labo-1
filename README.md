@@ -61,3 +61,9 @@ pour chaque utilisateur. Lorsqu'un utilisateur utilise plusieurs appareils, l'ap
 assurer que les messages sont envoyés à tous les appareils associés à l'utilisateur. Pour ce faire,
 l'application peut stocker les tokens de chaque appareil de l'utilisateur sur les serveurs de
 l'application, de sorte que les notifications push puissent être envoyées à tous les appareils.
+
+## 1.5.Question théorique d’approfondissement
+Pour améliorer l'api GraphQL, on pourrait compresser les données retournée et/ou utiliser protobuf.
+Cela permtrait de rendre la taille des données envoyée encore plus petite. Cependant le principale problème
+que l'on va rencontrer d'après nous, est la complexitée coté serveur. Il faudra donc avoir un schema protobuf
+pour chaque possibilité ce qui est très peu pratique.
