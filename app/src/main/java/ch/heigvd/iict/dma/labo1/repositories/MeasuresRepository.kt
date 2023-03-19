@@ -74,7 +74,6 @@ class MeasuresRepository(private val scope : CoroutineScope,
                 conn.setRequestProperty("X-Network", networkType.toString())
 
             val elapsed = measureTimeMillis {
-                Log.e("SendViewModel", "Implement me !!! Send measures to $url") //TODO
 
                 var serialized : String = ""
                 when (serialisation) {
@@ -92,19 +91,19 @@ class MeasuresRepository(private val scope : CoroutineScope,
                     }
                 }
 
-                Log.d("SendContent", "$serialized")
+                Log.d("SendContent", serialized)
                 var toSend : ByteArray = serialized.toByteArray(Charsets.UTF_8)
 
                 // Compression if needed
-                if (compression == Compression.DEFLATE) {
-                    conn.setRequestProperty("X-Content-Encoding", "DEFLATE")
-                    var arrayOutputStream = ByteArrayOutputStream()
-                    var outputStream = DeflaterOutputStream(arrayOutputStream)
-                    outputStream.write(toSend)
-                    outputStream.flush()
-                    outputStream.close()
-                    toSend = arrayOutputStream.toByteArray()
-                }
+//                if (compression == Compression.DEFLATE) {
+//                    conn.setRequestProperty("X-Content-Encoding", "DEFLATE")
+//                    var arrayOutputStream = ByteArrayOutputStream()
+//                    var outputStream = DeflaterOutputStream(arrayOutputStream)
+//                    outputStream.write(toSend)
+//                    outputStream.flush()
+//                    outputStream.close()
+//                    toSend = arrayOutputStream.toByteArray()
+//                }
 
                 conn.outputStream.use { output ->
                     output.write(toSend)
@@ -171,7 +170,7 @@ class MeasuresRepository(private val scope : CoroutineScope,
         }
     }
 
-    private fun toProtoBuf(measures: List<Measure>) : ByteArray {
+    private fun toProtoBuf(measures: List<Measure>) : String {
         val measuresProto = measures.map {
 
             val status = when(it.status){
@@ -196,7 +195,7 @@ class MeasuresRepository(private val scope : CoroutineScope,
 
         return MeasuresOuterClass.Measures.newBuilder()
             .addAllMeasures(measuresProto)
-            .build().toByteArray()
+            .build().toString()
     }
 
     private fun toJson(measures: List<Measure>) : String {
