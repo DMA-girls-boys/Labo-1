@@ -8,7 +8,6 @@ import ch.heigvd.iict.dma.labo1.models.*
 import ch.heigvd.iict.dma.protobuf.MeasuresOuterClass
 import com.google.gson.Gson
 import com.google.gson.GsonBuilder
-import com.google.protobuf.Timestamp
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -24,16 +23,18 @@ import java.util.zip.Inflater
 import java.util.zip.InflaterInputStream
 import kotlin.system.measureTimeMillis
 
-class MeasuresRepository(private val scope : CoroutineScope,
-                         private val dtd : String = "https://mobile.iict.ch/measures.dtd",
-                         private val httpUrl : String = "http://mobile.iict.ch/api",
-                         private val httpsUrl : String = "https://mobile.iict.ch/api") {
+class MeasuresRepository(
+    private val scope: CoroutineScope,
+    private val dtd: String = "https://mobile.iict.ch/measures.dtd",
+    private val httpUrl: String = "http://mobile.iict.ch/api",
+    private val httpsUrl: String = "https://mobile.iict.ch/api"
+) {
 
     private val _measures = MutableLiveData(mutableListOf<Measure>())
     val measures = Transformations.map(_measures) { mList -> mList.toList() }
 
     private val _requestDuration = MutableLiveData(-1L)
-    val requestDuration : LiveData<Long> get() = _requestDuration
+    val requestDuration: LiveData<Long> get() = _requestDuration
 
     fun generateRandomMeasures(nbr: Int = 3) {
         addMeasures(Measure.getRandomMeasures(nbr))
@@ -57,7 +58,12 @@ class MeasuresRepository(private val scope : CoroutineScope,
         _measures.postValue(mutableListOf())
     }
 
-    fun sendMeasureToServer(encryption : Encryption, compression : Compression, networkType : NetworkType, serialisation : Serialisation) {
+    fun sendMeasureToServer(
+        encryption: Encryption,
+        compression: Compression,
+        networkType: NetworkType,
+        serialisation: Serialisation
+    ) {
         scope.launch(Dispatchers.IO) {
 
             val urlStr = when (encryption) {
@@ -75,7 +81,7 @@ class MeasuresRepository(private val scope : CoroutineScope,
 
             val elapsed = measureTimeMillis {
 
-                var toSend : ByteArray
+                var toSend: ByteArray
                 when (serialisation) {
                     Serialisation.XML -> {
                         conn.setRequestProperty("Content-Type", "application/xml")
@@ -95,17 +101,16 @@ class MeasuresRepository(private val scope : CoroutineScope,
 
                 // Compression if needed
                 if (compression == Compression.DEFLATE) {
-                    Log.d("Compression", "Deflate")
-                    conn.setRequestProperty("X-Content-Encoding", "deflate")
-                    var arrayOutputStream = ByteArrayOutputStream()
-                    var outputStream = DeflaterOutputStream(arrayOutputStream, Deflater(8, true))
+                    Log.d("Compression", "DEFLATE")
+                    conn.setRequestProperty("X-Content-Encoding", "DEFLATE")
+                    val arrayOutputStream = ByteArrayOutputStream()
+                    val outputStream = DeflaterOutputStream(arrayOutputStream, Deflater(8, true))
                     outputStream.write(toSend)
                     outputStream.flush()
                     outputStream.close()
                     toSend = arrayOutputStream.toByteArray()
 
-                    val inflaterInputStream = InflaterInputStream(ByteArrayInputStream(toSend), Inflater(true))
-                    Log.d("Inflated", inflaterInputStream.bufferedReader().use { it.readText() })
+                    InflaterInputStream(ByteArrayInputStream(toSend), Inflater(true))
                 }
 
 
@@ -115,29 +120,36 @@ class MeasuresRepository(private val scope : CoroutineScope,
                 }
 
                 if (conn.responseCode != 200) {
-                    throw Exception("Error while sending measures to server, Error:" + conn.responseCode + " | " + conn.headerFields.get("X-Error"))
+                    throw Exception(
+                        "Error while sending measures to server, Error:" + conn.responseCode + " | " + conn.headerFields["X-Error"]
+                    )
                 }
 
-                var dataString : String
-                val baos = ByteArrayOutputStream()
-                if (serialisation == Serialisation.PROTOBUF) {
-                    val byteChunk = ByteArray(4096)
-                    var n: Int
-                    while (conn.inputStream.read(byteChunk).also { n = it } > 0) {
-                        baos.write(byteChunk, 0, n)
+
+                var dataString = ""
+                var bytes = ByteArray(0)
+                if (serialisation == Serialisation.PROTOBUF || compression == Compression.DEFLATE) {
+                    bytes = conn.inputStream.readBytes()
+
+                    if (compression == Compression.DEFLATE) {
+                        val inflaterInputStream =
+                            InflaterInputStream(ByteArrayInputStream(bytes), Inflater(true))
+
+                        if (serialisation != Serialisation.PROTOBUF) {
+                            dataString = inflaterInputStream.bufferedReader().use { it.readText() }
+                        } else {
+                            bytes = inflaterInputStream.readBytes()
+                        }
                     }
-                    dataString = baos.toString()
+
                 } else {
                     BufferedReader(InputStreamReader(conn.inputStream)).use { br ->
                         dataString = br.readText()
-                        Log.d("Response", dataString)
                     }
                 }
 
-                if (compression == Compression.DEFLATE) {
-                    val inflaterInputStream = InflaterInputStream(ByteArrayInputStream(dataString.toByteArray(Charsets.UTF_8)), Inflater(true))
-                    dataString = inflaterInputStream.bufferedReader().use { it.readText() }
-                }
+
+
 
                 when (serialisation) {
                     Serialisation.XML -> {
@@ -158,11 +170,11 @@ class MeasuresRepository(private val scope : CoroutineScope,
                     }
                     Serialisation.PROTOBUF -> {
 
-                        val responseList = MeasuresOuterClass.MeasuresAck.parseFrom(baos.toByteArray())
+                        val responseList = MeasuresOuterClass.MeasuresAck.parseFrom(bytes)
                         measures.value?.forEach { measure ->
-                            val id = measure.id;
+                            val id = measure.id
                             responseList.getMeasures(id)?.let { response ->
-                                val status = when(response.status){
+                                val status = when (response.status) {
                                     MeasuresOuterClass.Status.NEW -> Measure.Status.NEW
                                     MeasuresOuterClass.Status.OK -> Measure.Status.OK
                                     MeasuresOuterClass.Status.ERROR -> Measure.Status.ERROR
@@ -178,19 +190,15 @@ class MeasuresRepository(private val scope : CoroutineScope,
         }
     }
 
-    private fun toProtoBuf(measures: List<Measure>) : ByteArray {
+    private fun toProtoBuf(measures: List<Measure>): ByteArray {
         val measuresProto = measures.map {
 
-            val status = when(it.status){
+            val status = when (it.status) {
                 Measure.Status.NEW -> MeasuresOuterClass.Status.NEW
                 Measure.Status.OK -> MeasuresOuterClass.Status.OK
                 Measure.Status.ERROR -> MeasuresOuterClass.Status.ERROR
             }
 
-            val timeInMillis = it.date.timeInMillis
-            val seconds = timeInMillis / 1000
-            val nanos = (timeInMillis % 1000) * 1000000
-            val timestamp = Timestamp.newBuilder().setSeconds(seconds).setNanos(nanos.toInt()).build()
 
             MeasuresOuterClass.Measure.newBuilder()
                 .setId(it.id)
@@ -206,19 +214,19 @@ class MeasuresRepository(private val scope : CoroutineScope,
             .build().toByteArray()
     }
 
-    private fun toJson(measures: List<Measure>) : String {
+    private fun toJson(measures: List<Measure>): String {
         val gson = GsonBuilder()
             .registerTypeHierarchyAdapter(Calendar::class.java, CalendarTypeAdapter())
             .create()
         return gson.toJson(measures)
     }
 
-    private fun fromJson(json: String) : Map<Int, ResponseMessage> {
+    private fun fromJson(json: String): Map<Int, ResponseMessage> {
         val gson = Gson()
         return gson.fromJson(json, Array<ResponseMessage>::class.java).associateBy { it.id }
     }
 
-    private fun toXML(measures: List<Measure>) : String {
+    private fun toXML(measures: List<Measure>): String {
         val docType = DocType("measures", dtd)
         try {
             val root = org.jdom2.Element("measures")
@@ -227,9 +235,15 @@ class MeasuresRepository(private val scope : CoroutineScope,
                 val measureElement = org.jdom2.Element("measure")
                 measureElement.setAttribute("id", measure.id.toString())
                 measureElement.setAttribute("status", measure.status.toString())
-                measureElement.addContent(org.jdom2.Element("type").setText(measure.type.toString()))
-                measureElement.addContent(org.jdom2.Element("value").setText(measure.value.toString()))
-                measureElement.addContent(org.jdom2.Element("date").setText(measure.date.toString()))
+                measureElement.addContent(
+                    org.jdom2.Element("type").setText(measure.type.toString())
+                )
+                measureElement.addContent(
+                    org.jdom2.Element("value").setText(measure.value.toString())
+                )
+                measureElement.addContent(
+                    org.jdom2.Element("date").setText(measure.date.toString())
+                )
                 measureElement
             })
             return org.jdom2.output.XMLOutputter().outputString(document)
@@ -239,7 +253,8 @@ class MeasuresRepository(private val scope : CoroutineScope,
 
         return ""
     }
-    private fun fromXML(xml: InputSource) : Map<Int, ResponseMessage> {
+
+    private fun fromXML(xml: InputSource): Map<Int, ResponseMessage> {
         val messages = mutableMapOf<Int, ResponseMessage>()
         try {
             val builder = org.jdom2.input.SAXBuilder()

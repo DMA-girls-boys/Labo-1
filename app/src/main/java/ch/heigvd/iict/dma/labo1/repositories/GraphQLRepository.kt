@@ -102,7 +102,7 @@ class GraphQLRepository(
 
             val elapsed = measureTimeMillis {
                 val jsonRequest =
-                    "{\"query\": \"query { findAuthorById(id:" + author.id + "){ books{ id, publicationDate, authors{ id, name, } } }}\" }"
+                    "{\"query\": \"query { findAuthorById(id:" + author.id + "){ books{ id, title, publicationDate, authors{ id, name, } } }}\" }"
 
 
                 val url = URL(httpsUrl)
