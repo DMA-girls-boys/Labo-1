@@ -1,31 +1,30 @@
 syntax = "proto3";
 
-package ch.heigvd.iict.dma.labo1.protobuf;
+option java_package = "ch.heigvd.iict.dma.protobuf";
 
-import "google/protobuf/timestamp.proto";
-
-message Measure {
-  int32 id = 1;
-
-  enum Status {
-    NEW = 0;
-    OK = 1;
-    ERROR = 2;
-  }
-
-  enum Type {
-      TEMPERATURE = 0;
-      PRECIPITATION = 1;
-      HUMIDITY = 2;
-      PRESSURE = 3;
-  }
-
-  Status status = 2;
-  Type type = 3;
-  double value = 4;
-  google.protobuf.Timestamp date = 5;
+enum Status {
+  NEW = 0;
+  OK = 1;
+  ERROR = 2;
 }
 
 message Measures {
   repeated Measure measures = 1;
+}
+
+message MeasuresAck {
+  repeated MeasureAck measures = 1;
+}
+
+message Measure {
+  uint32 id = 1;
+  Status status = 2;
+  string type = 3;
+  double value = 4;
+  uint64 date = 5;
+}
+
+message MeasureAck {
+  uint32 id = 1;
+  Status status = 2;
 }

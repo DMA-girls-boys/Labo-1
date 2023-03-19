@@ -3,5 +3,5 @@
 
 // Generated files should ignore deprecation warnings
 @file:Suppress("DEPRECATION")
-package ch.heigvd.iict.dma.labo1.protobuf;
+package ch.heigvd.iict.dma.protobuf;
 
