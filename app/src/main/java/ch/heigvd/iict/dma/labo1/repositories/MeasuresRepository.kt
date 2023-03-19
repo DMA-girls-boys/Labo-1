@@ -13,11 +13,13 @@ import kotlinx.coroutines.launch
 import org.jdom2.DocType
 import org.xml.sax.InputSource
 import java.io.BufferedReader
+import java.io.ByteArrayOutputStream
 import java.io.InputStreamReader
 import java.io.StringReader
 import java.net.HttpURLConnection
 import java.net.URL
 import java.util.*
+import java.util.zip.DeflaterOutputStream
 import kotlin.system.measureTimeMillis
 
 class MeasuresRepository(private val scope : CoroutineScope,
@@ -69,30 +71,39 @@ class MeasuresRepository(private val scope : CoroutineScope,
             if (networkType != NetworkType.RANDOM)
                 conn.setRequestProperty("X-Network", networkType.toString())
 
-            if (compression == Compression.DEFLATE)
-                conn.setRequestProperty("X-Content-Encoding", "DEFLATE")
-
-
-
             val elapsed = measureTimeMillis {
-                Log.e("SendViewModel", "Implement me !!! Send measures to $url") //TODO
 
-                if (serialisation == Serialisation.XML) {
-                    conn.setRequestProperty("Content-Type", "application/xml")
-                    val xml = toXML(measures.value!!)
-                    Log.d("SendViewModel", "XML: $xml")
-                    conn.outputStream.use { output ->
-                        output.write(xml.toByteArray(Charsets.UTF_8))
+                var serialized : String = ""
+                when (serialisation) {
+                    Serialisation.XML -> {
+                        conn.setRequestProperty("Content-Type", "application/xml")
+                        serialized = toXML(measures.value!!)
                     }
-                } else {
-                    conn.setRequestProperty("Content-Type", "application/json")
-                    val json = toJson(measures.value!!)
-
-                    Log.d("SendViewModel", "JSON: $json")
-
-                    conn.outputStream.use { output ->
-                        output.write(json.toByteArray(Charsets.UTF_8))
+                    Serialisation.JSON -> {
+                        conn.setRequestProperty("Content-Type", "application/json")
+                        serialized = toJson(measures.value!!)
                     }
+                    Serialisation.PROTOBUF -> {
+                        //TODO
+                    }
+                }
+
+                Log.d("SendContent", "$serialized")
+                var toSend : ByteArray = serialized.toByteArray(Charsets.UTF_8)
+
+                // Compression if needed
+                if (compression == Compression.DEFLATE) {
+                    conn.setRequestProperty("X-Content-Encoding", "DEFLATE")
+                    var arrayOutputStream = ByteArrayOutputStream()
+                    var outputStream = DeflaterOutputStream(arrayOutputStream)
+                    outputStream.write(toSend)
+                    outputStream.flush()
+                    outputStream.close()
+                    toSend = arrayOutputStream.toByteArray()
+                }
+
+                conn.outputStream.use { output ->
+                    output.write(toSend)
                 }
 
                 if (conn.responseCode != 200) {
