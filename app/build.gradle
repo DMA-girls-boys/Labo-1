@@ -75,4 +75,7 @@ dependencies {
     implementation 'com.google.firebase:firebase-messaging'
     implementation 'com.google.firebase:firebase-messaging-ktx'
 
+    //protobuf
+    implementation 'com.google.protobuf:protobuf-kotlin:3.22.2'
+
 }

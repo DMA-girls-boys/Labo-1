@@ -5,14 +5,17 @@ import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.Transformations
 import ch.heigvd.iict.dma.labo1.models.*
+import ch.heigvd.iict.dma.labo1.protobuf.MeasuresOuterClass
 import com.google.gson.Gson
 import com.google.gson.GsonBuilder
+import com.google.protobuf.Timestamp
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import org.jdom2.DocType
 import org.xml.sax.InputSource
 import java.io.BufferedReader
+import java.io.ByteArrayOutputStream
 import java.io.InputStreamReader
 import java.io.StringReader
 import java.net.HttpURLConnection
@@ -75,47 +78,83 @@ class MeasuresRepository(private val scope : CoroutineScope,
 
 
             val elapsed = measureTimeMillis {
-                Log.e("SendViewModel", "Implement me !!! Send measures to $url") //TODO
+                Log.e("SendViewModel", "Send measures to $url")
 
-                if (serialisation == Serialisation.XML) {
-                    conn.setRequestProperty("Content-Type", "application/xml")
-                    val xml = toXML(measures.value!!)
-                    Log.d("SendViewModel", "XML: $xml")
-                    conn.outputStream.use { output ->
-                        output.write(xml.toByteArray(Charsets.UTF_8))
+                when (serialisation) {
+                    Serialisation.XML -> {
+                        conn.setRequestProperty("Content-Type", "application/xml")
+                        val xml = toXML(measures.value!!)
+                        Log.d("SendViewModel", "XML: $xml")
+                        conn.outputStream.use { output ->
+                            output.write(xml.toByteArray(Charsets.UTF_8))
+                        }
                     }
-                } else {
-                    conn.setRequestProperty("Content-Type", "application/json")
-                    val json = toJson(measures.value!!)
+                    Serialisation.JSON -> {
+                        conn.setRequestProperty("Content-Type", "application/json")
+                        val json = toJson(measures.value!!)
 
-                    Log.d("SendViewModel", "JSON: $json")
+                        Log.d("SendViewModel", "JSON: $json")
 
-                    conn.outputStream.use { output ->
-                        output.write(json.toByteArray(Charsets.UTF_8))
+                        conn.outputStream.use { output ->
+                            output.write(json.toByteArray(Charsets.UTF_8))
+                        }
+                    }
+                    Serialisation.PROTOBUF -> {
+                        val data = toProtoBuf(measures.value!!)
+                        Log.d("Protobuf", data.toString())
+                        conn.setRequestProperty("Content-Type", "application/protobuf")
+                        conn.outputStream.use { output ->
+                            output.write(data)
+                        }
                     }
                 }
 
                 if (conn.responseCode != 200) {
-                    throw Exception("Error while sending measures to server")
-                }
-                var data = "";
-                BufferedReader(InputStreamReader(conn.inputStream)).use { br ->
-                    data = br.readText()
-                    Log.d("Response", data)
+                    throw Exception("Error while sending measures to server, Error:" + conn.responseCode + " | " + conn.headerFields.get("X-Error"))
                 }
 
-                if (serialisation == Serialisation.XML) {
-                    val responseList = fromXML(InputSource(StringReader(data)))
-                    measures.value?.forEach { measure ->
-                        responseList[measure.id]?.let { response ->
-                            measure.status = response.status
+
+                when (serialisation) {
+                    Serialisation.XML -> {
+                        var dataString = "";
+                        BufferedReader(InputStreamReader(conn.inputStream)).use { br ->
+                            dataString = br.readText()
+                            Log.d("Response", dataString)
+                        }
+
+                        val responseList = fromXML(InputSource(StringReader(dataString)))
+                        measures.value?.forEach { measure ->
+                            responseList[measure.id]?.let { response ->
+                                measure.status = response.status
+                            }
                         }
                     }
-                } else {
-                    val responseList = fromJson(data)
-                    measures.value?.forEach { measure ->
-                        responseList[measure.id]?.let { response ->
-                            measure.status = response.status
+                    Serialisation.JSON -> {
+                        var dataString = "";
+                        BufferedReader(InputStreamReader(conn.inputStream)).use { br ->
+                            dataString = br.readText()
+                            Log.d("Response", dataString)
+                        }
+
+                        val responseList = fromJson(dataString)
+                        measures.value?.forEach { measure ->
+                            responseList[measure.id]?.let { response ->
+                                measure.status = response.status
+                            }
+                        }
+                    }
+                    Serialisation.PROTOBUF -> {
+                        val baos = ByteArrayOutputStream()
+                        val byteChunk = ByteArray(4096)
+                        var n: Int
+                        while (conn.inputStream.read(byteChunk).also { n = it } > 0) {
+                            baos.write(byteChunk, 0, n)
+                        }
+                        val responseList = fromProtoBuf(baos.toByteArray())
+                        measures.value?.forEach { measure ->
+                            responseList[measure.id]?.let { response ->
+                                measure.status = response.status
+                            }
                         }
                     }
                 }
@@ -124,6 +163,67 @@ class MeasuresRepository(private val scope : CoroutineScope,
         }
     }
 
+    private fun toProtoBuf(measures: List<Measure>) : ByteArray {
+        val measuresProto = measures.map {
+            val type = when(it.type){
+                Measure.Type.TEMPERATURE -> MeasuresOuterClass.Measure.Type.TEMPERATURE
+                Measure.Type.PRECIPITATION -> MeasuresOuterClass.Measure.Type.PRECIPITATION
+                Measure.Type.HUMIDITY -> MeasuresOuterClass.Measure.Type.HUMIDITY
+                Measure.Type.PRESSURE -> MeasuresOuterClass.Measure.Type.PRESSURE
+            }
+
+            val status = when(it.status){
+                Measure.Status.NEW -> MeasuresOuterClass.Measure.Status.NEW
+                Measure.Status.OK -> MeasuresOuterClass.Measure.Status.OK
+                Measure.Status.ERROR -> MeasuresOuterClass.Measure.Status.ERROR
+            }
+
+            val timeInMillis = it.date.timeInMillis
+            val seconds = timeInMillis / 1000
+            val nanos = (timeInMillis % 1000) * 1000000
+            val timestamp = Timestamp.newBuilder().setSeconds(seconds).setNanos(nanos.toInt()).build()
+
+            MeasuresOuterClass.Measure.newBuilder()
+                .setId(it.id)
+                .setDate(timestamp)
+                .setType(type)
+                .setStatus(status)
+                .setValue(it.value)
+                .build()
+        }
+
+        return MeasuresOuterClass.Measures.newBuilder()
+            .addAllMeasures(measuresProto)
+            .build().toByteArray()
+    }
+
+    private fun fromProtoBuf(measures: ByteArray) : List<Measure> {
+        val measures = MeasuresOuterClass.Measures.parseFrom(measures).measuresList.map {
+            val type = when(it.type){
+                MeasuresOuterClass.Measure.Type.TEMPERATURE -> Measure.Type.TEMPERATURE
+                MeasuresOuterClass.Measure.Type.PRECIPITATION -> Measure.Type.PRECIPITATION
+                MeasuresOuterClass.Measure.Type.HUMIDITY -> Measure.Type.HUMIDITY
+                MeasuresOuterClass.Measure.Type.PRESSURE -> Measure.Type.PRESSURE
+                else -> throw java.lang.RuntimeException()
+            }
+
+            val status = when(it.status){
+                MeasuresOuterClass.Measure.Status.NEW -> Measure.Status.NEW
+                MeasuresOuterClass.Measure.Status.OK -> Measure.Status.OK
+                MeasuresOuterClass.Measure.Status.ERROR -> Measure.Status.ERROR
+                else -> throw java.lang.RuntimeException()
+            }
+
+            val seconds = it.date.seconds
+            val nanos = it.date.nanos
+            val timeInMillis = seconds * 1000 + nanos / 1000000
+            val calendar = Calendar.getInstance()
+
+            Measure(it.id, status, type, it.value, calendar)
+        }
+
+        return measures
+    }
 
     private fun toJson(measures: List<Measure>) : String {
         val gson = GsonBuilder()
