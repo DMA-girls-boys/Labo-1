@@ -75,35 +75,32 @@ class MeasuresRepository(private val scope : CoroutineScope,
 
             val elapsed = measureTimeMillis {
 
-                var serialized : String = ""
+                var toSend : ByteArray
                 when (serialisation) {
                     Serialisation.XML -> {
                         conn.setRequestProperty("Content-Type", "application/xml")
-                        serialized = toXML(measures.value!!)
+                        toSend = toXML(measures.value!!).toByteArray(Charsets.UTF_8)
                     }
                     Serialisation.JSON -> {
                         conn.setRequestProperty("Content-Type", "application/json")
-                        serialized = toJson(measures.value!!)
+                        toSend = toJson(measures.value!!).toByteArray(Charsets.UTF_8)
                     }
                     Serialisation.PROTOBUF -> {
                         conn.setRequestProperty("Content-Type", "application/protobuf")
-                        serialized = toProtoBuf(measures.value!!)
+                        toSend = toProtoBuf(measures.value!!)
                     }
                 }
 
-                Log.d("SendContent", serialized)
-                var toSend : ByteArray = serialized.toByteArray(Charsets.UTF_8)
-
                 // Compression if needed
-//                if (compression == Compression.DEFLATE) {
-//                    conn.setRequestProperty("X-Content-Encoding", "DEFLATE")
-//                    var arrayOutputStream = ByteArrayOutputStream()
-//                    var outputStream = DeflaterOutputStream(arrayOutputStream)
-//                    outputStream.write(toSend)
-//                    outputStream.flush()
-//                    outputStream.close()
-//                    toSend = arrayOutputStream.toByteArray()
-//                }
+                if (compression == Compression.DEFLATE) {
+                    conn.setRequestProperty("X-Content-Encoding", "DEFLATE")
+                    var arrayOutputStream = ByteArrayOutputStream()
+                    var outputStream = DeflaterOutputStream(arrayOutputStream)
+                    outputStream.write(toSend)
+                    outputStream.flush()
+                    outputStream.close()
+                    toSend = arrayOutputStream.toByteArray()
+                }
 
                 conn.outputStream.use { output ->
                     output.write(toSend)
@@ -170,7 +167,7 @@ class MeasuresRepository(private val scope : CoroutineScope,
         }
     }
 
-    private fun toProtoBuf(measures: List<Measure>) : String {
+    private fun toProtoBuf(measures: List<Measure>) : ByteArray {
         val measuresProto = measures.map {
 
             val status = when(it.status){
@@ -195,7 +192,7 @@ class MeasuresRepository(private val scope : CoroutineScope,
 
         return MeasuresOuterClass.Measures.newBuilder()
             .addAllMeasures(measuresProto)
-            .build().toString()
+            .build().toByteArray()
     }
 
     private fun toJson(measures: List<Measure>) : String {
